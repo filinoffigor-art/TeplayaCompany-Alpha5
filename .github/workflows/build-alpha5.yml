@@ -1,0 +1,75 @@
+name: Build TK4 Alpha5 Native Clean
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/build-alpha5.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Gradle 8.11.1
+        run: |
+          curl -L --fail --retry 3 -o gradle.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          unzip -q gradle.zip
+          ./gradle-8.11.1/bin/gradle --version
+
+      - name: Static contract checks
+        run: |
+          grep -q "versionName '5.0.0-alpha5'" app/build.gradle
+          grep -q "targetSdk 34" app/build.gradle
+          grep -q 'Оборот' app/src/main/java/ru/teplayakompaniya/tk4/MainActivity.java
+          grep -q 'Дебиторка' app/src/main/java/ru/teplayakompaniya/tk4/MainActivity.java
+          grep -q 'План поступлений' app/src/main/java/ru/teplayakompaniya/tk4/MainActivity.java
+          grep -q 'Поделиться ТЗ' app/src/main/java/ru/teplayakompaniya/tk4/MainActivity.java
+          grep -q 'setStatusBarColor' app/src/main/java/ru/teplayakompaniya/tk4/MainActivity.java
+          if grep -R "WebView" -n app/src/main; then
+            echo "ERROR: Alpha5 must be native and contain no WebView"
+            exit 1
+          fi
+          echo "Static checks OK"
+
+      - name: Unit tests
+        run: ./gradle-8.11.1/bin/gradle testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android Lint
+        run: ./gradle-8.11.1/bin/gradle lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        run: ./gradle-8.11.1/bin/gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk TeplayaCompany-v5.0.0-alpha5.apk
+          ls -lh TeplayaCompany-v5.0.0-alpha5.apk
+          echo "Alpha5 APK built successfully"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeplayaCompany-v5.0.0-alpha5
+          path: TeplayaCompany-v5.0.0-alpha5.apk
+          retention-days: 30
